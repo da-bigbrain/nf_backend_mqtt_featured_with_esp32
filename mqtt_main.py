@@ -4,13 +4,15 @@ from flask_socketio import SocketIO, emit
 from flask_mqtt import Mqtt
 import numpy as np
 import eventlet
+from datetime import datetime
+import json
+
 
 eventlet.monkey_patch()
 
 
 # Create a Flask application
 app = Flask(__name__)
-CORS(app)
 app.config['MQTT_BROKER_URL'] = 'nf.enk.icu'
 app.config['MQTT_BROKER_PORT'] = 1883
 app.config['MQTT_USERNAME'] = 'inky'
@@ -26,9 +28,6 @@ def index():
 @socketio.on('connect')
 def handle_connect():
     print('Client connected')
-    # Test emit to verify functionality
-    emit('mqtt', {'avg_beta_amplitude': 1234})
-    print("Test emit sent")
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -86,7 +85,8 @@ def handle_mqtt_message(client, userdata, msg):
                 print("Average amplitude for beta range:", avg_beta_amplitude)
 
                 # Emit the average beta amplitude
-                socketio.emit('mqtt', data={'beta_wave': avg_beta_amplitude})
+                data =  {'avg_beta_amplitude': avg_beta_amplitude, 'time': datetime.now()}
+                socketio.emit('mqtt',  data=json.dumps(data, default=str))
                 print("Emitted avg_beta_amplitude ", avg_beta_amplitude)
 
                 # Clear data_chunk for the next set of samples

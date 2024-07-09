@@ -6,7 +6,7 @@ import numpy as np
 import eventlet
 from datetime import datetime
 import json
-
+import re
 
 eventlet.monkey_patch()
 
@@ -58,41 +58,48 @@ def handle_mqtt_message(client, userdata, msg):
     global data_chunk
     try:
         # Log the message payload for debugging
-        print(f"Received message payload (length {len(msg.payload)}): {msg.payload}")
+        print(f"Received message payload (length {len(msg.payload)})")
+        # Extract the content inside the square brackets
+        content = re.search(r'\[(.*?)\]', msg.payload.decode("utf-8")).group(1)
 
-        # Ensure the message payload is 4 bytes
-        if len(msg.payload) <= 4:
-            # Decode the message payload as an integer
-            value = int(msg.payload.decode("utf-8"))
-            data_chunk += [value] * 64
-            
-            print(f"Received data chunk size: {len(data_chunk)}")
+        # Split the content by commas
+        split_items = content.split(',')
 
-            # Ensure data_chunk is the correct size
-            if len(data_chunk) >= chunk_size:
-                print("Performing FFT...")
+        # Strip any leading/trailing whitespace from each item
+        items = [int(item.strip()) for item in split_items]
+        print(f"Integer items: {items}")
+        
+        for item in items:
+            data_chunk.append(item)
 
-                # Perform FFT
-                fft_result = np.fft.fft(data_chunk[:chunk_size])
-                fft_freqs = np.fft.fftfreq(chunk_size, 1/sampling_rate)
+        # Decode the message payload as an integer
+        
+        print(f"Received data chunk size: {len(data_chunk)}")
 
-                # Find indices corresponding to beta frequency range
-                beta_indices = np.where((fft_freqs >= beta_freq_range[0]) & (fft_freqs <= beta_freq_range[1]))[0]
-                # Calculate average amplitude for beta range
-                beta_amplitudes = [np.abs(fft_result[i]) for i in beta_indices]
-                print("Filtered size:", len(beta_amplitudes), beta_amplitudes)
-                avg_beta_amplitude = np.mean(beta_amplitudes)
-                print("Average amplitude for beta range:", avg_beta_amplitude)
+        # Ensure data_chunk is the correct size
+        if len(data_chunk) >= chunk_size:
+            print(datetime.now())
+            print("Performing FFT...")
 
-                # Emit the average beta amplitude
-                data =  {'avg_beta_amplitude': avg_beta_amplitude, 'time': datetime.now()}
-                socketio.emit('mqtt',  data=json.dumps(data, default=str))
-                print("Emitted avg_beta_amplitude ", avg_beta_amplitude)
+            # Perform FFT
+            fft_result = np.fft.fft(data_chunk[:chunk_size])
+            fft_freqs = np.fft.fftfreq(chunk_size, 1/sampling_rate)
 
-                # Clear data_chunk for the next set of samples
-                data_chunk = data_chunk[chunk_size:]
-        else:
-            print(f"Received message with unexpected length: {len(msg.payload)}")
+            # Find indices corresponding to beta frequency range
+            beta_indices = np.where((fft_freqs >= beta_freq_range[0]) & (fft_freqs <= beta_freq_range[1]))[0]
+            # Calculate average amplitude for beta range
+            beta_amplitudes = [np.abs(fft_result[i]) for i in beta_indices]
+            print("Filtered size:", len(beta_amplitudes), beta_amplitudes)
+            avg_beta_amplitude = np.mean(beta_amplitudes)
+            print("Average amplitude for beta range:", avg_beta_amplitude)
+
+            # Emit the average beta amplitude
+            data =  {'avg_beta_amplitude': avg_beta_amplitude, 'time': datetime.now()}
+            socketio.emit('mqtt',  data=json.dumps(data, default=str))
+            print("Emitted avg_beta_amplitude ", avg_beta_amplitude)
+
+            # Clear data_chunk for the next set of samples
+            data_chunk = data_chunk[chunk_size:]
     except Exception as e:
         print(f"Error processing message: {e}")
 
